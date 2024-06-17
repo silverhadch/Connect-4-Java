@@ -1,4 +1,5 @@
-A little Newbie Project.
+# Connect-4
+A little Newbie Project written in Java.
 
 Developed by Hadi Chokr. 
 https://github.com/silverhadch/
