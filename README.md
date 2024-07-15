@@ -1,4 +1,5 @@
 # Connect-4
+My old School Project
 A little Newbie Project written in Java. ​Bot is still being made more challenging​. Language Localisation is still in Development so its currently German only. This is a pure Alpha build.
 
 
