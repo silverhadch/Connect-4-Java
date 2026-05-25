@@ -39,7 +39,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      # JDK 17 for Maven build
+      - name: Set up JDK 17 (build)
         uses: actions/setup-java@v4
         with:
           java-version: '17'
@@ -48,6 +49,13 @@ jobs:
 
       - name: Build jar
         run: mvn --batch-mode package
+
+      # JDK 8 for Launch4j (it refuses to run on anything newer)
+      - name: Set up JDK 8 (for Launch4j)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '8'
+          distribution: 'temurin'
 
       - name: Patch Launch4j config paths
         shell: pwsh
@@ -66,15 +74,16 @@ jobs:
       - name: Wrap jar → exe
         shell: pwsh
         run: |
-          # Choco doesn't add launch4jc to PATH reliably — find it manually
-          $l4j = Get-ChildItem "C:\ProgramData\chocolatey" -Recurse -Filter "launch4jc.exe" -ErrorAction SilentlyContinue |
+          $l4j = Get-ChildItem "C:\Program Files (x86)\Launch4j" -Filter "launch4jc.exe" -ErrorAction SilentlyContinue |
                  Select-Object -First 1 -ExpandProperty FullName
           if (-not $l4j) {
-            $l4j = Get-ChildItem "C:\Program Files*" -Recurse -Filter "launch4jc.exe" -ErrorAction SilentlyContinue |
+            $l4j = Get-ChildItem "C:\ProgramData\chocolatey" -Recurse -Filter "launch4jc.exe" -ErrorAction SilentlyContinue |
                    Select-Object -First 1 -ExpandProperty FullName
           }
-          if (-not $l4j) { Write-Error "launch4jc.exe not found after choco install"; exit 1 }
+          if (-not $l4j) { Write-Error "launch4jc.exe not found"; exit 1 }
           Write-Host "Using launch4jc: $l4j"
+          # Point JAVA_HOME at JDK 8 so launch4jc is happy
+          $env:JAVA_HOME = $env:JAVA_HOME_8_X64
           & $l4j l4jcf.xml
 
       - name: Upload exe
