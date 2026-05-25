@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up JDK 17 (build)
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
@@ -47,52 +47,26 @@ jobs:
       - name: Build jar
         run: mvn --batch-mode package
 
-      - name: Set up JDK 8 (for Launch4j)
-        uses: actions/setup-java@v4
-        with:
-          java-version: '8'
-          distribution: 'temurin'
-
-      - name: Patch Launch4j config paths
+      # jpackage is bundled with JDK 17 — no extra tools needed
+      # Produces a self-contained .exe with a bundled JRE inside
+      - name: Package as Windows exe (jpackage)
         shell: pwsh
         run: |
-          $xml = Get-Content l4jcf.xml -Raw
-          $jar = "${{ github.workspace }}\target\VierGewinnt.jar"
-          $exe = "${{ github.workspace }}\target\VierGewinnt.exe"
-          $xml = $xml -replace '(?<=<jar>)[^<]+(?=</jar>)', $jar
-          $xml = $xml -replace '(?<=<outfile>)[^<]+(?=</outfile>)', $exe
-          Set-Content l4jcf.xml $xml
-
-      - name: Install Launch4j
-        shell: pwsh
-        run: choco install launch4j --no-progress -y
-
-      - name: Wrap jar → exe
-        shell: pwsh
-        run: |
-          $java8 = "$env:JAVA_HOME_8_X64\bin\java.exe"
-          Write-Host "Java 8: $java8"
-
-          # launch4jc.exe is itself a Java app that ignores JAVA_HOME env —
-          # find its underlying jar and invoke it directly with our java 8 binary
-          $l4jJar = Get-ChildItem "C:\Program Files (x86)\Launch4j" -Recurse -Filter "launch4j-*.jar" |
-                    Select-Object -First 1 -ExpandProperty FullName
-
-          if ($l4jJar) {
-            Write-Host "Invoking Launch4j jar: $l4jJar"
-            & $java8 -jar $l4jJar l4jcf.xml
-          } else {
-            # Last resort: shove java8 at the front of PATH so the exe picks it up
-            Write-Host "launch4j jar not found, prepending Java 8 to PATH"
-            $env:PATH = "$env:JAVA_HOME_8_X64\bin;" + $env:PATH
-            & "C:\Program Files (x86)\Launch4j\launch4jc.exe" l4jcf.xml
-          }
+          jpackage `
+            --input target `
+            --name VierGewinnt `
+            --main-jar VierGewinnt.jar `
+            --main-class Spielraum `
+            --type exe `
+            --win-console `
+            --dest target/installer `
+            --app-version 1.0.0
 
       - name: Upload exe
         uses: actions/upload-artifact@v4
         with:
           name: windows-exe
-          path: target/VierGewinnt.exe
+          path: target/installer/VierGewinnt-1.0.0.exe
 
   release:
     needs: [ build-linux, build-windows ]
@@ -129,9 +103,9 @@ jobs:
 
             > ${{ github.event.head_commit.message }}
 
-            | File | Platform |
-            |------|----------|
-            | `VierGewinnt.jar` | Linux / macOS — `java -jar VierGewinnt.jar` |
-            | `VierGewinnt.exe` | Windows — double-click, no Java install needed |
+            | File | Platform | Notes |
+            |------|----------|-------|
+            | `VierGewinnt.jar` | Linux / macOS | Requires Java 17 — `java -jar VierGewinnt.jar` |
+            | `VierGewinnt-1.0.0.exe` | Windows | Bundled JRE, no Java install needed |
           files: dist/*
           prerelease: true
