@@ -1,0 +1,117 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  # ── Build jar on Linux ────────────────────────────────────────────────────
+  build-linux:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build jar
+        run: mvn --batch-mode package
+
+      - name: Upload jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-jar
+          path: target/VierGewinnt.jar
+
+  # ── Build jar on Windows + wrap into .exe with Launch4j ──────────────────
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Build jar
+        run: mvn --batch-mode package
+
+      # Install Launch4j and wrap the jar into a native .exe
+      - name: Install Launch4j
+        run: choco install launch4j --no-progress -y
+
+      # Rewrite the hardcoded paths in l4jcf.xml to use the actual workspace paths
+      - name: Patch Launch4j config paths
+        shell: pwsh
+        run: |
+          $xml = Get-Content l4jcf.xml -Raw
+          $jar = "${{ github.workspace }}\target\VierGewinnt.jar" -replace '\\', '\\'
+          $exe = "${{ github.workspace }}\target\VierGewinnt.exe" -replace '\\', '\\'
+          $xml = $xml -replace '(?<=<jar>)[^<]+(?=</jar>)', $jar
+          $xml = $xml -replace '(?<=<outfile>)[^<]+(?=</outfile>)', $exe
+          Set-Content l4jcf.xml $xml
+
+      - name: Wrap jar → exe
+        run: launch4jc l4jcf.xml
+
+      - name: Upload exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: target/VierGewinnt.exe
+
+  # ── Publish single release with both artifacts ────────────────────────────
+  release:
+    needs: [ build-linux, build-windows ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get short SHA
+        id: sha
+        run: echo "short=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      - name: Download Linux jar
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-jar
+          path: dist/
+
+      - name: Download Windows exe
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-exe
+          path: dist/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ steps.sha.outputs.short }}
+          name: "Build ${{ steps.sha.outputs.short }}"
+          body: |
+            Automated build from commit `${{ github.sha }}`
+
+            > ${{ github.event.head_commit.message }}
+
+            | File | Platform |
+            |------|----------|
+            | `VierGewinnt.jar` | Linux / macOS — `java -jar VierGewinnt.jar` |
+            | `VierGewinnt.exe` | Windows — double-click, no Java install needed |
+          files: dist/*
+          prerelease: true

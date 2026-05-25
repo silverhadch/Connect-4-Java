@@ -1,0 +1,22 @@
+# ── Maven build output ────────────────────
+target/
+
+# ── Old manual build artifacts (commit these no more) ──
+out/
+bin/
+*.class
+VierGewinnt.jar
+VierGewinnt.exe
+manifest.txt
+
+# ── IDE ───────────────────────────────────
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+nbproject/
+
+# ── OS ────────────────────────────────────
+.DS_Store
+Thumbs.db
