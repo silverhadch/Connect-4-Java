@@ -49,23 +49,33 @@ jobs:
       - name: Build jar
         run: mvn --batch-mode package
 
-      # Install Launch4j and wrap the jar into a native .exe
-      - name: Install Launch4j
-        run: choco install launch4j --no-progress -y
-
-      # Rewrite the hardcoded paths in l4jcf.xml to use the actual workspace paths
       - name: Patch Launch4j config paths
         shell: pwsh
         run: |
           $xml = Get-Content l4jcf.xml -Raw
-          $jar = "${{ github.workspace }}\target\VierGewinnt.jar" -replace '\\', '\\'
-          $exe = "${{ github.workspace }}\target\VierGewinnt.exe" -replace '\\', '\\'
+          $jar = "${{ github.workspace }}\target\VierGewinnt.jar"
+          $exe = "${{ github.workspace }}\target\VierGewinnt.exe"
           $xml = $xml -replace '(?<=<jar>)[^<]+(?=</jar>)', $jar
           $xml = $xml -replace '(?<=<outfile>)[^<]+(?=</outfile>)', $exe
           Set-Content l4jcf.xml $xml
 
+      - name: Install Launch4j via choco
+        shell: pwsh
+        run: choco install launch4j --no-progress -y
+
       - name: Wrap jar → exe
-        run: launch4jc l4jcf.xml
+        shell: pwsh
+        run: |
+          # Choco doesn't add launch4jc to PATH reliably — find it manually
+          $l4j = Get-ChildItem "C:\ProgramData\chocolatey" -Recurse -Filter "launch4jc.exe" -ErrorAction SilentlyContinue |
+                 Select-Object -First 1 -ExpandProperty FullName
+          if (-not $l4j) {
+            $l4j = Get-ChildItem "C:\Program Files*" -Recurse -Filter "launch4jc.exe" -ErrorAction SilentlyContinue |
+                   Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $l4j) { Write-Error "launch4jc.exe not found after choco install"; exit 1 }
+          Write-Host "Using launch4jc: $l4j"
+          & $l4j l4jcf.xml
 
       - name: Upload exe
         uses: actions/upload-artifact@v4
