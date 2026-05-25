@@ -5,7 +5,6 @@ on:
     branches: [ "main" ]
 
 jobs:
-  # ── Build jar on Linux ────────────────────────────────────────────────────
   build-linux:
     runs-on: ubuntu-latest
     permissions:
@@ -30,7 +29,6 @@ jobs:
           name: linux-jar
           path: target/VierGewinnt.jar
 
-  # ── Build jar on Windows + wrap into .exe with Launch4j ──────────────────
   build-windows:
     runs-on: windows-latest
     permissions:
@@ -39,7 +37,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # JDK 17 for Maven build
       - name: Set up JDK 17 (build)
         uses: actions/setup-java@v4
         with:
@@ -50,7 +47,6 @@ jobs:
       - name: Build jar
         run: mvn --batch-mode package
 
-      # JDK 8 for Launch4j (it refuses to run on anything newer)
       - name: Set up JDK 8 (for Launch4j)
         uses: actions/setup-java@v4
         with:
@@ -67,24 +63,30 @@ jobs:
           $xml = $xml -replace '(?<=<outfile>)[^<]+(?=</outfile>)', $exe
           Set-Content l4jcf.xml $xml
 
-      - name: Install Launch4j via choco
+      - name: Install Launch4j
         shell: pwsh
         run: choco install launch4j --no-progress -y
 
       - name: Wrap jar → exe
         shell: pwsh
         run: |
-          $l4j = Get-ChildItem "C:\Program Files (x86)\Launch4j" -Filter "launch4jc.exe" -ErrorAction SilentlyContinue |
-                 Select-Object -First 1 -ExpandProperty FullName
-          if (-not $l4j) {
-            $l4j = Get-ChildItem "C:\ProgramData\chocolatey" -Recurse -Filter "launch4jc.exe" -ErrorAction SilentlyContinue |
-                   Select-Object -First 1 -ExpandProperty FullName
+          $java8 = "$env:JAVA_HOME_8_X64\bin\java.exe"
+          Write-Host "Java 8: $java8"
+
+          # launch4jc.exe is itself a Java app that ignores JAVA_HOME env —
+          # find its underlying jar and invoke it directly with our java 8 binary
+          $l4jJar = Get-ChildItem "C:\Program Files (x86)\Launch4j" -Recurse -Filter "launch4j-*.jar" |
+                    Select-Object -First 1 -ExpandProperty FullName
+
+          if ($l4jJar) {
+            Write-Host "Invoking Launch4j jar: $l4jJar"
+            & $java8 -jar $l4jJar l4jcf.xml
+          } else {
+            # Last resort: shove java8 at the front of PATH so the exe picks it up
+            Write-Host "launch4j jar not found, prepending Java 8 to PATH"
+            $env:PATH = "$env:JAVA_HOME_8_X64\bin;" + $env:PATH
+            & "C:\Program Files (x86)\Launch4j\launch4jc.exe" l4jcf.xml
           }
-          if (-not $l4j) { Write-Error "launch4jc.exe not found"; exit 1 }
-          Write-Host "Using launch4jc: $l4j"
-          # Point JAVA_HOME at JDK 8 so launch4jc is happy
-          $env:JAVA_HOME = $env:JAVA_HOME_8_X64
-          & $l4j l4jcf.xml
 
       - name: Upload exe
         uses: actions/upload-artifact@v4
@@ -92,7 +94,6 @@ jobs:
           name: windows-exe
           path: target/VierGewinnt.exe
 
-  # ── Publish single release with both artifacts ────────────────────────────
   release:
     needs: [ build-linux, build-windows ]
     runs-on: ubuntu-latest
